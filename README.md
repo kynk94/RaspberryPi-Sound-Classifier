@@ -19,8 +19,8 @@
 경보음 - 붉은색 지속적으로 깜빡임
 
 ### Raspberry Pi Environments
-python 3.5.3
-numpy 1.17.0
-librosa 0.4.2 (some modified with 0.7.0)
-tensorflow 1.14.0
-sklearn 0.18
+python 3.5.3  
+numpy 1.17.0  
+librosa 0.4.2 (some modified with 0.7.0)  
+tensorflow 1.14.0  
+sklearn 0.18  
