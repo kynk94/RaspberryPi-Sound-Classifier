@@ -17,3 +17,10 @@
 초인종, 경보음 등 원하는 알림이 왔을 때 무드등이 함께 깜빡인다.  
 초인종 - 흰색 3번 깜빡임  
 경보음 - 붉은색 지속적으로 깜빡임
+
+### Raspberry Pi Environments
+python 3.5.3
+numpy 1.17.0
+librosa 0.4.2 (some modified with 0.7.0)
+tensorflow 1.14.0
+sklearn 0.18
