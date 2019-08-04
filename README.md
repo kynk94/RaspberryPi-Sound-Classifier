@@ -21,7 +21,12 @@
 헤어드라이 - 푸른색 Breathing  
 아기울음 - 노란색 Breathing  
 ```
-### Raspberry Pi Environments
+## 동작 영상
+<a href="https://youtu.be/QDaoeKqP2gA" target="_blank">
+ <img src="https://user-images.githubusercontent.com/41245985/62421401-14d3dc80-b6dc-11e9-968a-5a7523f779c1.png" alt="IMAGE ALT TEXT HERE" width="100%" border="10" />
+</a>
+
+## Raspberry Pi Environments
 ```
 python==3.5.3  
 numpy==1.17.0  
