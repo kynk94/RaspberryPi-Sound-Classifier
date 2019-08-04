@@ -1,9 +1,10 @@
+import RPi.GPIO as GPIO
 import numpy as np
 import librosa
+import librosa.display
 # librosa version == 0.4.2
 # and manually modified from 0.7.0
 # (logamplitude to same as power_to_db)
-import librosa.display
 # specshow in librosa.display v0.4.2 to v0.7.0
 import os
 import matplotlib.pyplot as plt
@@ -13,7 +14,57 @@ from tensorflow import keras
 from tensorflow.keras.models import load_model
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
+from bluetooth import*
 
+class LedControl(object):
+    def __init__(self):
+        led1_r = 16
+        led1_g = 20
+        led1_b = 21
+        led2_r = 13
+        led2_g = 19
+        led2_b = 26
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup(led1_r, GPIO.OUT)
+        GPIO.setup(led1_g, GPIO.OUT)
+        GPIO.setup(led1_b, GPIO.OUT)
+        GPIO.setup(led2_r, GPIO.OUT)
+        GPIO.setup(led2_g, GPIO.OUT)
+        GPIO.setup(led2_b, GPIO.OUT)
+
+        hz = 60
+        self.pwm1_r = GPIO.PWM(led1_r, hz)
+        self.pwm1_g = GPIO.PWM(led1_g, hz)
+        self.pwm1_b = GPIO.PWM(led1_b, hz)
+        self.pwm2_r = GPIO.PWM(led2_r, hz)
+        self.pwm2_g = GPIO.PWM(led2_g, hz)
+        self.pwm2_b = GPIO.PWM(led2_b, hz)
+        self.pwm1_r.start(100)
+        self.pwm1_g.start(100)
+        self.pwm1_b.start(100)
+        self.pwm2_r.start(100)
+        self.pwm2_g.start(100)
+        self.pwm2_b.start(100)
+        
+    def pwm(self, r=None, g=None, b=None):
+        if r != None:
+            self.pwm1_r.ChangeDutyCycle(r)
+            time.sleep(0.001)
+            self.pwm2_r.ChangeDutyCycle(r)
+            time.sleep(0.001)
+        if g != None:
+            self.pwm1_g.ChangeDutyCycle(g)
+            time.sleep(0.001)
+            self.pwm2_g.ChangeDutyCycle(g)
+            time.sleep(0.001)
+        if b != None:
+            self.pwm1_b.ChangeDutyCycle(b)
+            time.sleep(0.001)
+            self.pwm2_b.ChangeDutyCycle(b)
+            time.sleep(0.001)
+    
 class melCNN(object):
     def __init__(self, sec=3, state=None, label=None, useCNN=None):
         self.FORMAT = pyaudio.paFloat32
@@ -34,7 +85,7 @@ class melCNN(object):
         self.data_dir = os.path.dirname("data/")
         os.makedirs(self.data_dir, exist_ok=True)
         self.train_dir = os.path.join(self.data_dir, "train")
-        os.makedirs(self.train_dir, exist_ok=True)        
+        os.makedirs(self.train_dir, exist_ok=True)
         self.test_dir = os.path.join(self.data_dir, "test")
         os.makedirs(self.test_dir, exist_ok=True)
         self.model_dir = os.path.dirname("model/")
@@ -58,53 +109,58 @@ class melCNN(object):
         self.total_len = self.RATE * self.SEC
         self.total_data = np.zeros(self.total_len)
         
-        if self.STATE == None:
-            pass
-        else:
-            self.pa = pyaudio.PyAudio()
-            for i in range(self.pa.get_device_count()):
-                print(self.pa.get_device_info_by_index(i)['name'])
-            self.stream = self.pa.open(format=self.FORMAT,
-                                              channels=self.CHANNELS,
-                                              rate=self.RATE,
-                                              input_device_index=1,
-                                              input=True,
-                                              output=False,
-                                              frames_per_buffer=self.RATE)
-            self.loop()
+        dev_idx = None
+        self.pa = pyaudio.PyAudio()
+
+        # Detecting microphone.
+        for i in range(self.pa.get_device_count()):
+            if "USB" in self.pa.get_device_info_by_index(i)['name']:
+                dev_idx = self.pa.get_device_info_by_index(i)['index']
+                print(dev_idx, self.pa.get_device_info_by_index(i)['name'])
+        assert dev_idx != None # Stop if no microphone is detected.
+
+        self.stream = self.pa.open(format=self.FORMAT,
+                                   channels=self.CHANNELS,
+                                   rate=self.RATE,
+                                   input_device_index=dev_idx,
+                                   input=True,
+                                   output=False,
+                                   frames_per_buffer=self.RATE)
         
     def loop(self):
         try:            
-            while True:
-                start = time.time()
+            print("get sound...")
+            self.start = time.time()
+            self.audioinput()
+            
+            decibel = round(self.pltmel(),2)
+            
+            if self.STATE == "test":
+                middle = time.time()
+                print(str(round(middle-self.start, 3))+"\tsec\tpredicting...")
+                pred, acc = self.test(self.useCNN)
+                print_str = "dB: "+str(decibel)+"\t"+pred
                 
-                self.audioinput()
-                decibel = round(self.pltmel(),2)
-                
-                if self.STATE == "test":
-                    pred, acc = self.test(self.useCNN)
-                    print_str = "dB: "+str(decibel)+"\t"+pred
-                    
-                end = time.time()
-                total_time = str(round(end-start, 3))+"\tsec\t"
-                print(total_time + print_str)
-                
-                self.count += 1
-                
+            end = time.time()
+            total_time = str(round(end-self.start, 3))+"\tsec\t"
+            print(str(self.count)+"\t"+total_time + print_str)
+            
+            self.count += 1
+
+            return decibel, pred
+
         except KeyboardInterrupt:
             self.stream.stop_stream()
             self.stream.close()
-            self.pa.terminate()            
-        
+            self.pa.terminate()
+
+            return 0
+
     def audioinput(self):
-        #for i in range(self.SEC):
-        #    self.data = self.stream.read(self.RATE, exception_on_overflow=False)
-        #    self.data = np.fromstring(self.data, np.float32)
-        #    self.total_data[:-self.RATE] = self.total_data[self.RATE:]
-        #    self.total_data[-self.RATE:] = self.data
-        self.total_data = np.fromstring(self.stream.read(3*self.RATE, exception_on_overflow=False), np.float32)
+        self.data = self.stream.read(self.total_len, exception_on_overflow=False)
+        self.total_data = np.fromstring(self.data, np.float32)
             
-    def pltmel(self):
+    def pltmel(self):        
         self.mel = librosa.feature.melspectrogram(y=self.total_data,
                                                   sr=self.RATE,
                                                   n_fft=self.n_fft,
@@ -113,21 +169,24 @@ class melCNN(object):
                                                   #power=1.0,
                                                   fmin=self.f_min,
                                                   fmax=self.f_max)
-        
+
+        # Set image size to w=224, h=224.
         plt.rcParams["figure.figsize"] = (2.24, 2.24)
         plt.axis("off")
         plt.axes([0., 0., 1., 1.], frameon=False, xticks=[], yticks=[])
-        #plt.imshow(librosa.power_to_db(self.mel, ref=np.max))        
+
         self.db_spec = librosa.logamplitude(self.mel, ref=np.max)
         decibel = abs(np.min(self.db_spec))
-        librosa.display.specshow(self.db_spec, y_axis="mel", x_axis="time")
+        lr, out = librosa.display.specshow(self.db_spec, y_axis="mel", x_axis="time")
+        # Modified specshow method in display.py to have two outputs.
+        # out = out.get_array().reshape(128,130)
         
         if self.STATE == "save_data":
             plt.savefig(str(os.path.join(self.label_dir, "{:03}.jpg".format(self.count))), bbox_inches=None, pad_inches=0, dpi=100)
         elif self.STATE == "test":
             plt.savefig(str(os.path.join(self.test_dir, "{:03}.jpg".format(self.count))), bbox_inches=None, pad_inches=0, dpi=100)
         plt.clf()
-        
+
         return decibel
         
     def train(self, useCNN=True, epochs=10, hidden=128):
@@ -144,13 +203,10 @@ class melCNN(object):
                     for img in images:                
                         data.append(plt.imread(os.path.join(label_dir, img)))
                         label.append(k)
-        data = np.array(data)
-        label = np.array(label)
+        data /= 255.0
+        data = np.array(data, dtype=np.float32)
+        label = np.array(label, dtype=np.float32)
         data, label = shuffle(data, label)
-        
-        data = data / 255.0
-        data = data.astype("float32")
-        label = label.astype("float32")
         
         self.train_x, self.test_x, self.train_y, self.test_y = train_test_split(data, label, test_size=0.3, random_state=0)
 
@@ -158,16 +214,14 @@ class melCNN(object):
         self.train_history = self.model.fit(self.train_x, self.train_y,
                                             epochs=epochs,
                                             validation_data=(self.test_x, self.test_y))
-                        
+        
         self.model.save_weights(os.path.join(self.model_dir, model_name+".h5"))
         print("Saved model to disk")
         
-    def test(self, useCNN=True):        
+    def test(self, useCNN=True, hidden=128):        
         if self.count == 0:
             n_classes = len(self.labels)
             model_name = "model_"+str(n_classes)+"class"            
-            
-            hidden = 128
             model_name = self.make_model(model_name=model_name, useCNN=useCNN, hidden=hidden, n_classes=n_classes)
             self.model.load_weights(os.path.join(self.model_dir, model_name+".h5"))
         
@@ -187,7 +241,7 @@ class melCNN(object):
                 keras.layers.Conv2D(filters=30, kernel_size=(3, 3), activation="relu", padding="valid"),
                 keras.layers.MaxPooling2D(pool_size=(3,3)),
                 keras.layers.Flatten(),
-                keras.layers.Dense(128, activation="relu"),
+                keras.layers.Dense(hidden, activation="relu"),
                 keras.layers.Dense(n_classes, activation="softmax")
             ])
         else:
@@ -203,3 +257,62 @@ class melCNN(object):
         return model_name
 
 mel_test = melCNN(state="test", useCNN=True)
+led = LedControl()
+led.pwm(0,0,0)
+
+# Check until Bluetooth connection is established.
+while True:
+    try:
+        client_socket=BluetoothSocket(RFCOMM)
+        client_socket.connect(("98:D3:71:FD:5A:F3",1))
+        break
+    except btcommon.BluetoothError as err:
+        print("Error : %s" %err)
+        time.sleep(1)
+
+on = True
+
+try: 
+    while True:
+        start_time = time.time()
+        if on:
+            led.pwm(r=93,g=92,b=84) # ivory color
+        db, pred = mel_test.loop()
+        if pred == "doorbell":
+            client_socket.send('a')
+            for i in range(3):
+                led.pwm(r=0,g=100,b=0)
+                time.sleep(0.5)
+                led.pwm(r=0,g=0,b=0)
+                time.sleep(0.5)
+        elif pred == "fire_alarm":
+            client_socket.send('b')
+            for n in range(3):
+                for i in range(101):
+                    led.pwm(r=i,g=0,b=0)
+                    time.sleep(0.01)
+                for i in range(101):
+                    led.pwm(r=100-i,g=0,b=0)
+                    time.sleep(0.01)
+        elif pred == "hair_dry":
+            client_socket.send('c')
+            for n in range(3):
+                for i in range(101):
+                    led.pwm(r=0,g=0,b=i)
+                    time.sleep(0.01)
+                for i in range(101):
+                    led.pwm(r=0,g=0,b=100-i)
+                    time.sleep(0.01)
+        elif pred == "baby_crying":
+            client_socket.send('d')
+            for n in range(3):
+                for i in range(101):
+                    led.pwm(r=i,g=i,b=0)
+                    time.sleep(0.01)
+                for i in range(101):
+                    led.pwm(r=100-i,g=100-i,b=0)
+                    time.sleep(0.01)
+
+except KeyboardInterrupt:
+    led.pwm(r=0,g=0,b=0)
+    client_socket.close()
