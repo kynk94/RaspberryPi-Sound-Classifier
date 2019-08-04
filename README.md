@@ -31,3 +31,9 @@ sklearn==0.18
 bluetooth==0.22  
 pyaudio==0.2.11  
 ```
+
+## Data Class
+<img src="https://user-images.githubusercontent.com/41245985/62420292-a6d2e980-b6ca-11e9-842c-5ff252bbe10d.png"></img>
+
+## Data Collection
+<img src="https://user-images.githubusercontent.com/41245985/62420139-68d4c600-b6c8-11e9-918c-b6d05468ee9c.png"></img>
